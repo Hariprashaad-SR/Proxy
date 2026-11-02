@@ -1,0 +1,20 @@
+.env
+meet/.env
+proxy/.env
+__pycache__/
+*.pyc
+.venv/
+backend/.venv/
+.chrome-profile/
+recordings/
+documents/
+node_modules/
+meet/dist/
+proxy/dist/
+*.log
+.DS_Store
+
+# Generated/reference reports — not project source
+sample-report.pdf
+proxy-ai-report.pdf
+proxy-ai-report.docx

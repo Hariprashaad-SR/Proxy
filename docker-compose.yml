@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-proxy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-proxy}
+      POSTGRES_DB: ${POSTGRES_DB:-proxy}
+    ports:
+      # Default host port is 5433, not 5432 — a locally-installed Postgres
+      # (Homebrew, Postgres.app, etc.) commonly already owns 5432, and on
+      # macOS that collision fails silently: `localhost:5432` keeps routing
+      # to the pre-existing server instead of this container. Override
+      # POSTGRES_PORT in .env if 5433 is also taken.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - proxy_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-proxy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Shared backend: the Proxy bot/session API AND the Meet websocket
+  # signaling endpoint (routers/meet_ws.py) both live here.
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      MEET_SIGNAL_WS_URL: ws://localhost:${BACKEND_PORT:-8000}/ws/meet
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./documents:/app/documents
+
+  # The Google-Meet-like calling app: Google sign-in, lobby, in-call UI.
+  meet:
+    build: ./meet
+    restart: unless-stopped
+    environment:
+      VITE_MEET_WS_URL: ws://localhost:${BACKEND_PORT:-8000}/ws/meet
+      VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+    depends_on:
+      - backend
+    ports:
+      - "5174:5174"
+
+  # The Proxy bot console: start sessions, watch transcripts/chat live, read summaries.
+  proxy:
+    build: ./proxy
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
+      VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  proxy_postgres_data:
